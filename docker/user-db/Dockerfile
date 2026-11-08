@@ -1,4 +1,4 @@
-FROM mongo:3
+FROM mongo:4.4
 ADD ./scripts /tmp/scripts
 
 # Modify child mongo to use /data/db-accounts as dbpath (because /data/db wont persist the build because it is already a VOLUME)
@@ -14,4 +14,4 @@ RUN su - mongodb && mongod --fork --logpath /var/log/mongodb.log --dbpath /data/
 # Make the new dir a VOLUME to persist it
 VOLUME /data/db-users
 
-CMD ["mongod", "--config", "/etc/mongodb.conf", "--smallfiles"]
+CMD ["mongod", "--config", "/etc/mongodb.conf"]
