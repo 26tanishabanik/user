@@ -1,19 +1,21 @@
 package mongodb
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 
 	"github.com/microservices-demo/user/users"
-	"gopkg.in/mgo.v2/bson"
-	"gopkg.in/mgo.v2/dbtest"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 var (
-	TestMongo  = Mongo{}
-	TestServer = dbtest.DBServer{}
-	TestUser   = users.User{
+	TestMongo = Mongo{}
+	// MONGO_TEST_HOST names a disposable MongoDB 3.6+, whose users database
+	// the tests drop; tests that need one skip without it.
+	TestHost = os.Getenv("MONGO_TEST_HOST")
+	TestUser = users.User{
 		FirstName: "firstname",
 		LastName:  "lastname",
 		Username:  "username",
@@ -26,27 +28,34 @@ var (
 	}
 )
 
-func init() {
-	TestServer.SetPath("/tmp")
-}
-
 func TestMain(m *testing.M) {
-	TestMongo.Session = TestServer.Session()
-	TestMongo.EnsureIndexes()
-	TestMongo.Session.Close()
-	exitTest(m.Run())
+	code := m.Run()
+	if TestMongo.Client != nil {
+		TestMongo.Client.Database(db).Drop(context.Background())
+	}
+	os.Exit(code)
 }
 
-func exitTest(i int) {
-	TestServer.Wipe()
-	TestServer.Stop()
-	os.Exit(i)
+// connect points the package at the test server, once.
+func connect(t *testing.T) {
+	if TestHost == "" {
+		t.Skip("MONGO_TEST_HOST is not set")
+	}
+	if TestMongo.Client != nil {
+		return
+	}
+	host = TestHost
+	if err := TestMongo.Init(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestInit(t *testing.T) {
-	err := TestMongo.Init()
-	if err.Error() != "no reachable servers" {
-		t.Error("expecting no reachable servers error")
+	saved := host
+	defer func() { host = saved }()
+	host = "localhost:1"
+	if err := (&Mongo{}).Init(); err == nil {
+		t.Error("expecting an unreachable server error")
 	}
 }
 
@@ -59,9 +68,9 @@ func TestNew(t *testing.T) {
 
 func TestAddUserIDs(t *testing.T) {
 	m := New()
-	uid := bson.NewObjectId()
-	cid := bson.NewObjectId()
-	aid := bson.NewObjectId()
+	uid := primitive.NewObjectID()
+	cid := primitive.NewObjectID()
+	aid := primitive.NewObjectID()
 	m.ID = uid
 	m.AddressIDs = append(m.AddressIDs, aid)
 	m.CardIDs = append(m.CardIDs, cid)
@@ -84,7 +93,7 @@ func TestAddUserIDs(t *testing.T) {
 
 func TestAddressAddId(t *testing.T) {
 	m := MongoAddress{Address: users.Address{}}
-	id := bson.NewObjectId()
+	id := primitive.NewObjectID()
 	m.ID = id
 	m.AddID()
 	if m.Address.ID != id.Hex() {
@@ -94,7 +103,7 @@ func TestAddressAddId(t *testing.T) {
 
 func TestCardAddId(t *testing.T) {
 	m := MongoCard{Card: users.Card{}}
-	id := bson.NewObjectId()
+	id := primitive.NewObjectID()
 	m.ID = id
 	m.AddID()
 	if m.Card.ID != id.Hex() {
@@ -103,8 +112,7 @@ func TestCardAddId(t *testing.T) {
 }
 
 func TestCreate(t *testing.T) {
-	TestMongo.Session = TestServer.Session()
-	defer TestMongo.Session.Close()
+	connect(t)
 	err := TestMongo.CreateUser(&TestUser)
 	if err != nil {
 		t.Error(err)
@@ -116,8 +124,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestGetUserByName(t *testing.T) {
-	TestMongo.Session = TestServer.Session()
-	defer TestMongo.Session.Close()
+	connect(t)
 	u, err := TestMongo.GetUserByName(TestUser.Username)
 	if err != nil {
 		t.Error(err)
@@ -132,8 +139,7 @@ func TestGetUserByName(t *testing.T) {
 }
 
 func TestGetUser(t *testing.T) {
-	TestMongo.Session = TestServer.Session()
-	defer TestMongo.Session.Close()
+	connect(t)
 	_, err := TestMongo.GetUser(TestUser.UserID)
 	if err != nil {
 		t.Error(err)
@@ -141,8 +147,7 @@ func TestGetUser(t *testing.T) {
 }
 
 func TestGetUserAttributes(t *testing.T) {
-	TestMongo.Session = TestServer.Session()
-	defer TestMongo.Session.Close()
+	connect(t)
 
 }
 func TestGetURL(t *testing.T) {
@@ -156,8 +161,7 @@ func TestGetURL(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	TestMongo.Session = TestServer.Session()
-	defer TestMongo.Session.Close()
+	connect(t)
 	err := TestMongo.Ping()
 	if err != nil {
 		t.Error(err)

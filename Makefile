@@ -9,22 +9,18 @@ TAG=$(TRAVIS_COMMIT)
 
 default: build
 
+# A static binary for docker/user/Dockerfile-release.
+build:
+	mkdir -p bin
+	docker run --rm -v $(PWD):/src -w /src -e CGO_ENABLED=0 golang:1.22 go build -o bin/user .
 
-pre: 
-	go get -v github.com/Masterminds/glide
-
-deps: pre
-	glide install
-
-rm-deps:
-	rm -rf vendor
-
+# Set MONGO_TEST_HOST to run the MongoDB tests against a disposable server.
 test:
 	@docker build -t $(INSTANCE)-test -f ./Dockerfile-test .
-	@docker run --rm -it $(INSTANCE)-test /bin/sh -c 'glide novendor| xargs go test -v'
+	@docker run --rm -it -e MONGO_TEST_HOST $(INSTANCE)-test go test -v ./...
 
 cover:
-	@glide novendor|xargs go test -v -covermode=count
+	@go test -v -covermode=count ./...
 
 coverprofile:
 	go get github.com/modocache/gover
