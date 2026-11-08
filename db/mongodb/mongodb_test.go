@@ -133,8 +133,8 @@ func TestGetUserByName(t *testing.T) {
 		t.Error("expected equal usernames")
 	}
 	_, err = TestMongo.GetUserByName("bogususers")
-	if err == nil {
-		t.Error("expected not found error")
+	if err != ErrNotFound {
+		t.Errorf("got %v, want mgo's not found error", err)
 	}
 }
 

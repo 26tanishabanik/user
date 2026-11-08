@@ -24,6 +24,8 @@ var (
 	db       = "users"
 	//ErrInvalidHexID represents a entity id that is not a valid bson ObjectID
 	ErrInvalidHexID = errors.New("Invalid Id Hex")
+	// ErrNotFound is mgo's error for a missing document, which callers see.
+	ErrNotFound = errors.New("not found")
 )
 
 func init() {
@@ -126,6 +128,14 @@ func objectID(hex string) (primitive.ObjectID, bool) {
 	return id, err == nil
 }
 
+func (m *Mongo) findOne(collection string, filter bson.M, out interface{}) error {
+	err := m.c(collection).FindOne(context.Background(), filter).Decode(out)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return ErrNotFound
+	}
+	return err
+}
+
 func (m *Mongo) upsertID(collection string, id primitive.ObjectID, doc interface{}) error {
 	_, err := m.c(collection).ReplaceOne(context.Background(), bson.M{"_id": id}, doc, options.Replace().SetUpsert(true))
 	return err
@@ -202,7 +212,7 @@ func (m *Mongo) updateUser(userid string, update bson.M) error {
 		return err
 	}
 	if res.MatchedCount == 0 {
-		return mongo.ErrNoDocuments
+		return ErrNotFound
 	}
 	return nil
 }
@@ -218,7 +228,7 @@ func (m *Mongo) removeAttributeId(attr string, id primitive.ObjectID, userid str
 // GetUserByName Get user by their name
 func (m *Mongo) GetUserByName(name string) (users.User, error) {
 	mu := New()
-	err := m.c("customers").FindOne(context.Background(), bson.M{"username": name}).Decode(&mu)
+	err := m.findOne("customers", bson.M{"username": name}, &mu)
 	mu.AddUserIDs()
 	return mu.User, err
 }
@@ -230,7 +240,7 @@ func (m *Mongo) GetUser(id string) (users.User, error) {
 		return users.New(), errors.New("Invalid Id Hex")
 	}
 	mu := New()
-	err := m.c("customers").FindOne(context.Background(), bson.M{"_id": uid}).Decode(&mu)
+	err := m.findOne("customers", bson.M{"_id": uid}, &mu)
 	mu.AddUserIDs()
 	return mu.User, err
 }
@@ -309,7 +319,7 @@ func (m *Mongo) GetCard(id string) (users.Card, error) {
 		return users.Card{}, errors.New("Invalid Id Hex")
 	}
 	mc := MongoCard{}
-	err := m.c("cards").FindOne(context.Background(), bson.M{"_id": cid}).Decode(&mc)
+	err := m.findOne("cards", bson.M{"_id": cid}, &mc)
 	mc.AddID()
 	return mc.Card, err
 }
@@ -357,7 +367,7 @@ func (m *Mongo) GetAddress(id string) (users.Address, error) {
 		return users.Address{}, errors.New("Invalid Id Hex")
 	}
 	ma := MongoAddress{}
-	err := m.c("addresses").FindOne(context.Background(), bson.M{"_id": aid}).Decode(&ma)
+	err := m.findOne("addresses", bson.M{"_id": aid}, &ma)
 	ma.AddID()
 	return ma.Address, err
 }
@@ -429,7 +439,7 @@ func (m *Mongo) Delete(entity, id string) error {
 	res, err := m.c(entity).DeleteOne(ctx, bson.M{"_id": oid})
 	if err == nil && res.DeletedCount == 0 {
 		// mgo's Remove failed when nothing matched.
-		err = mongo.ErrNoDocuments
+		err = ErrNotFound
 	}
 	return err
 }
