@@ -1,6 +1,7 @@
 package users
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -14,4 +15,15 @@ func TestAddLinksAdd(t *testing.T) {
 		t.Error("expected equal address links")
 	}
 
+}
+
+func TestLinksEncodeHref(t *testing.T) {
+	l := Links{"self": Href{"http://user/addresses/test"}}
+	b, err := json.Marshal(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != `{"self":{"href":"http://user/addresses/test"}}` {
+		t.Errorf("links encoded as %s", b)
+	}
 }

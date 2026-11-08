@@ -1,6 +1,7 @@
 package users
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -53,4 +54,12 @@ func (l *Links) AddCard(id string) {
 
 type Href struct {
 	string `json:"href"`
+}
+
+// MarshalJSON writes the href explicitly: Go before 1.10 encoded the embedded
+// unexported field, later releases skip it and would send {}.
+func (h Href) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Href string `json:"href"`
+	}{h.string})
 }
