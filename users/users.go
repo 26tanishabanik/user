@@ -20,8 +20,8 @@ type User struct {
 	Email     string    `json:"-" bson:"email"`
 	Username  string    `json:"username" bson:"username"`
 	Password  string    `json:"-" bson:"password,omitempty"`
-	Addresses []Address `json:"-,omitempty" bson:"-"`
-	Cards     []Card    `json:"-,omitempty" bson:"-"`
+	Addresses []Address `json:"-" bson:"-"`
+	Cards     []Card    `json:"-" bson:"-"`
 	UserID    string    `json:"id" bson:"-"`
 	Links     Links     `json:"_links"`
 	Salt      string    `json:"-" bson:"salt"`
