@@ -113,11 +113,11 @@ func TestCardAddId(t *testing.T) {
 
 func TestCreate(t *testing.T) {
 	connect(t)
-	err := TestMongo.CreateUser(&TestUser)
+	err := TestMongo.CreateUser(context.Background(), &TestUser)
 	if err != nil {
 		t.Error(err)
 	}
-	err = TestMongo.CreateUser(&TestUser)
+	err = TestMongo.CreateUser(context.Background(), &TestUser)
 	if err == nil {
 		t.Error("Expected duplicate key error")
 	}
@@ -125,14 +125,14 @@ func TestCreate(t *testing.T) {
 
 func TestGetUserByName(t *testing.T) {
 	connect(t)
-	u, err := TestMongo.GetUserByName(TestUser.Username)
+	u, err := TestMongo.GetUserByName(context.Background(), TestUser.Username)
 	if err != nil {
 		t.Error(err)
 	}
 	if u.Username != TestUser.Username {
 		t.Error("expected equal usernames")
 	}
-	_, err = TestMongo.GetUserByName("bogususers")
+	_, err = TestMongo.GetUserByName(context.Background(), "bogususers")
 	if err != ErrNotFound {
 		t.Errorf("got %v, want mgo's not found error", err)
 	}
@@ -140,7 +140,7 @@ func TestGetUserByName(t *testing.T) {
 
 func TestGetUser(t *testing.T) {
 	connect(t)
-	_, err := TestMongo.GetUser(TestUser.UserID)
+	_, err := TestMongo.GetUser(context.Background(), TestUser.UserID)
 	if err != nil {
 		t.Error(err)
 	}
@@ -162,7 +162,7 @@ func TestGetURL(t *testing.T) {
 
 func TestPing(t *testing.T) {
 	connect(t)
-	err := TestMongo.Ping()
+	err := TestMongo.Ping(context.Background())
 	if err != nil {
 		t.Error(err)
 	}

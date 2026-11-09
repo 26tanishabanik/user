@@ -4,6 +4,7 @@ package api
 // In our case we just use a REST-y HTTP transport.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -16,7 +17,8 @@ import (
 	"github.com/microservices-demo/user/users"
 	stdopentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/net/context"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -40,73 +42,117 @@ func MakeHTTPHandler(ctx context.Context, e Endpoints, logger log.Logger, tracer
 		e.LoginEndpoint,
 		decodeLoginRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "GET /login", logger)))...,
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "GET /login", logger)))...,
 	))
 	r.Methods("POST").Path("/register").Handler(httptransport.NewServer(
 		ctx,
 		e.RegisterEndpoint,
 		decodeRegisterRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "POST /register", logger)))...,
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "POST /register", logger)))...,
 	))
-	r.Methods("GET").PathPrefix("/customers").Handler(httptransport.NewServer(
+	// The {id} routes only give traces a route template. Each sends a request
+	// to the same handler the prefix route below would, and is named so the
+	// Prometheus route label stays the same.
+	userGet := httptransport.NewServer(
 		ctx,
 		e.UserGetEndpoint,
 		decodeGetRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "GET /customers", logger)))...,
-	))
-	r.Methods("GET").PathPrefix("/cards").Handler(httptransport.NewServer(
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "GET /customers", logger)))...,
+	)
+	r.Methods("GET").Path("/customers/{id}").Name("customers").Handler(userGet)
+	r.Methods("GET").Path("/customers/{id}/addresses").Name("customers").Handler(userGet)
+	r.Methods("GET").Path("/customers/{id}/cards").Name("customers").Handler(userGet)
+	r.Methods("GET").PathPrefix("/customers").Handler(userGet)
+	cardGet := httptransport.NewServer(
 		ctx,
 		e.CardGetEndpoint,
 		decodeGetRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "GET /cards", logger)))...,
-	))
-	r.Methods("GET").PathPrefix("/addresses").Handler(httptransport.NewServer(
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "GET /cards", logger)))...,
+	)
+	r.Methods("GET").Path("/cards/{id}").Name("cards").Handler(cardGet)
+	r.Methods("GET").PathPrefix("/cards").Handler(cardGet)
+	addressGet := httptransport.NewServer(
 		ctx,
 		e.AddressGetEndpoint,
 		decodeGetRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "GET /addresses", logger)))...,
-	))
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "GET /addresses", logger)))...,
+	)
+	r.Methods("GET").Path("/addresses/{id}").Name("addresses").Handler(addressGet)
+	r.Methods("GET").PathPrefix("/addresses").Handler(addressGet)
 	r.Methods("POST").Path("/customers").Handler(httptransport.NewServer(
 		ctx,
 		e.UserPostEndpoint,
 		decodeUserRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "POST /customers", logger)))...,
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "POST /customers", logger)))...,
 	))
 	r.Methods("POST").Path("/addresses").Handler(httptransport.NewServer(
 		ctx,
 		e.AddressPostEndpoint,
 		decodeAddressRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "POST /addresses", logger)))...,
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "POST /addresses", logger)))...,
 	))
 	r.Methods("POST").Path("/cards").Handler(httptransport.NewServer(
 		ctx,
 		e.CardPostEndpoint,
 		decodeCardRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "POST /cards", logger)))...,
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "POST /cards", logger)))...,
 	))
-	r.Methods("DELETE").PathPrefix("/").Handler(httptransport.NewServer(
+	del := httptransport.NewServer(
 		ctx,
 		e.DeleteEndpoint,
 		decodeDeleteRequest,
 		encodeResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "DELETE /", logger)))...,
-	))
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "DELETE /", logger)))...,
+	)
+	r.Methods("DELETE").Path("/customers/{id}").Name("root").Handler(del)
+	r.Methods("DELETE").Path("/addresses/{id}").Name("root").Handler(del)
+	r.Methods("DELETE").Path("/cards/{id}").Name("root").Handler(del)
+	r.Methods("DELETE").PathPrefix("/").Handler(del)
 	r.Methods("GET").PathPrefix("/health").Handler(httptransport.NewServer(
 		ctx,
 		e.HealthEndpoint,
 		decodeHealthRequest,
 		encodeHealthResponse,
-		append(options, httptransport.ServerBefore(opentracing.FromHTTPRequest(tracer, "GET /health", logger)))...,
+		append(options, httptransport.ServerBefore(requestContext, opentracing.FromHTTPRequest(tracer, "GET /health", logger)))...,
 	))
 	r.Handle("/metrics", promhttp.Handler())
+	nameSpansByRoute(r)
 	return r
+}
+
+// requestContext starts each endpoint from the request's context, which holds
+// the OpenTelemetry server span, so MongoDB calls become its children; this
+// go-kit's Server would otherwise start from its base context, which is empty
+// here. The request's cancellation is dropped, so a client that hangs up does
+// not stop MongoDB writes part way, just as before.
+func requestContext(_ context.Context, r *http.Request) context.Context {
+	return context.WithoutCancel(r.Context())
+}
+
+// nameSpansByRoute names each request's server span "METHOD /template" and
+// sets http.route, so spans never carry the ids in the raw path.
+func nameSpansByRoute(r *mux.Router) {
+	r.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
+		tmpl, err := route.GetPathTemplate()
+		if err != nil {
+			return nil
+		}
+		next := route.GetHandler()
+		route.Handler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			span := trace.SpanFromContext(req.Context())
+			span.SetName(req.Method + " " + tmpl)
+			span.SetAttributes(semconv.HTTPRoute(tmpl))
+			next.ServeHTTP(w, req)
+		}))
+		return nil
+	})
 }
 
 func encodeError(_ context.Context, err error, w http.ResponseWriter) {
