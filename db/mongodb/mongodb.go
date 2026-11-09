@@ -48,7 +48,10 @@ func (m *Mongo) Init() error {
 		SetConnectTimeout(5 * time.Second).
 		SetServerSelectionTimeout(5 * time.Second).
 		SetTimeout(10 * time.Second).
-		SetMonitor(otelmongo.NewMonitor())
+		// The command shape tells GuardTrail two lookups apart. otelmongo sends
+		// it with values; GuardTrail's collector replaces every value before
+		// anything leaves this host.
+		SetMonitor(otelmongo.NewMonitor(otelmongo.WithCommandAttributeDisabled(false)))
 	client, err := mongo.Connect(context.Background(), opts)
 	if err != nil {
 		return err
